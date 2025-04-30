@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Resource Dashboard</title>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f4f6f9;
+    }
+    h1, h2 {
+      color: #2c3e50;
+    }
+    .resource {
+      background: #fff;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    canvas {
+      margin: 30px 0;
+      max-width: 500px;
+    }
+    .alert-popup {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #e74c3c;
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 9999;
+      max-width: 300px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Emergency Resource Dashboard</h1>
+
+  <h2>Resource Distribution</h2>
+  <canvas id="resourceChart" width="400" height="400"></canvas>
+
+  <h2>All Submitted Resources</h2>
+  <div id="resourceContainer"></div>
+
+  <h2>Request Help</h2>
+  <form id="helpRequestForm">
+    <label>Resource Needed: <input type="text" id="resourceName" required></label><br><br>
+    <label>Location: <input type="text" id="location" required></label><br><br>
+    <label>Type:
+      <select id="type" required>
+        <option value="Medical">Medical</option>
+        <option value="Food">Food</option>
+        <option value="Shelter">Shelter</option>
+        <option value="Water">Water</option>
+      </select>
+    </label><br><br>
+    <label>Severity:
+      <select id="severity" required>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+    </label><br><br>
+    <button type="submit">Submit Request</button>
+  </form>
+
+  <h2>Live Alerts in Your Area</h2>
+  <div id="alertsContainer"></div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAAyaWPk6h7Oi_StRM8stnP7wyN3KWmZTM",
+      authDomain: "disastermanagement-64f77.firebaseapp.com",
+      projectId: "disastermanagement-64f77",
+      storageBucket: "disastermanagement-64f77.appspot.com",
+      messagingSenderId: "380070686307",
+      appId: "1:380070686307:web:b4b773fbd81e0034239256"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const container = document.getElementById('resourceContainer');
+    const typeCounts = {};
+
+    db.collection("Resources")
+      .orderBy("timestamp", "desc")
+      .get()
+      .then(snapshot => {
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const date = data.timestamp?.toDate().toLocaleString() || "N/A";
+          const type = data.type;
+          typeCounts[type] = (typeCounts[type] || 0) + 1;
+
+          container.innerHTML += `
+            <div class="resource">
+              <strong>Resource:</strong> ${data.resourceName} <br>
+              <strong>Quantity:</strong> ${data.quantity} <br>
+              <strong>Location:</strong> ${data.location} <br>
+              <strong>Type:</strong> ${type} <br>
+              <strong>Submitted on:</strong> ${date}
+            </div>
+          `;
+        });
+
+        const ctx = document.getElementById('resourceChart').getContext('2d');
+        new Chart(ctx, {
+          type: 'pie',
+          data: {
+            labels: Object.keys(typeCounts),
+            datasets: [{
+              label: 'Resource Distribution',
+              data: Object.values(typeCounts),
+              backgroundColor: ['#3498db', '#e74c3c', '#f1c40f', '#9b59b6', '#2ecc71'],
+              borderWidth: 1
+            }]
+          }
+        });
+      })
+      .catch(err => {
+        console.error("Error fetching data:", err);
+      });
+
+    // Real-time help request submission
+    const requestForm = document.getElementById("helpRequestForm");
+    const alertsContainer = document.getElementById("alertsContainer");
+
+    requestForm.addEventListener("submit", e => {
+      e.preventDefault();
+      const resource = document.getElementById("resourceName").value;
+      const location = document.getElementById("location").value;
+      const type = document.getElementById("type").value;
+      const severity = document.getElementById("severity").value;
+
+      db.collection("Requests").add({
+        resource,
+        location,
+        type,
+        severity,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        uid: firebase.auth().currentUser.uid
+      }).then(() => {
+        alert("Help request submitted!");
+        requestForm.reset();
+      }).catch(err => {
+        console.error("Error submitting request:", err);
+      });
+    });
+
+    // Real-time alerts for logged-in user's location
+    firebase.auth().onAuthStateChanged(user => {
+      if (user) {
+        const userLocation = prompt("Enter your location to receive alerts:");
+
+        db.collection("Requests")
+          .where("location", "==", userLocation)
+          .where("severity", "==", "High")
+          .orderBy("timestamp", "desc")
+          .onSnapshot(snapshot => {
+            alertsContainer.innerHTML = "";
+            snapshot.forEach(doc => {
+              const data = doc.data();
+              alertsContainer.innerHTML += `
+                <div class="resource" style="border-left: 5px solid red;">
+                  <strong>High Alert:</strong> ${data.resource} needed in ${data.location}<br>
+                  <strong>Type:</strong> ${data.type}<br>
+                  <strong>Time:</strong> ${data.timestamp?.toDate().toLocaleString() || "N/A"}
+                </div>
+              `;
+            });
+
+            if (!snapshot.empty) {
+              alert("**CRITICAL ALERT**: High-severity help needed in your area!");
+            }
+          });
+      }
+    });
+
+    // Emergency popup UI
+    function showPopup() {
+      const popup = document.createElement('div');
+      popup.classList.add("alert-popup");
+      popup.innerHTML = `
+        <strong>**EMERGENCY ALERT**</strong><br>
+        Resources allocated to <strong>Zone 4</strong> due to flooding.<br>
+        <em>Please prioritize medical supplies!</em>
+      `;
+      document.body.appendChild(popup);
+
+      setTimeout(() => popup.remove(), 7000); // Hide after 7 seconds
+    }
+
+    // Auth check and popup trigger
+    firebase.auth().onAuthStateChanged(function(user) {
+      if (!user) {
+        window.location.href = "login.html";
+      } else {
+        showPopup();
+      }
+    });
+  </script>
+
+</body>
+</html>

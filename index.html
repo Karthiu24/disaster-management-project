@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Resource Dashboard</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f4f6f9;
+    }
+    h1, h2 {
+      color: #2c3e50;
+    }
+    .resource {
+      background: #fff;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    canvas {
+      margin: 30px 0;
+      max-width: 500px;
+    }
+    .logout-btn {
+      padding: 10px 20px;
+      background-color: #e74c3c;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    .logout-btn:hover {
+      background-color: #c0392b;
+    }
+    .logout-btn + .logout-btn {
+      background-color: #2ecc71;
+    }
+    .logout-btn + .logout-btn:hover {
+      background-color: #27ae60;
+    }
+  </style>
+</head>
+<body>
+
+  <div style="text-align: right; margin-bottom: 20px;">
+    <button class="logout-btn" onclick="logout()">Logout</button>
+    <button onclick="window.location.href='submit.html'" class="logout-btn">+ Submit Resource</button>
+  </div>
+
+  <h1>Emergency Resource Dashboard</h1>
+
+  <h2>Resource Distribution</h2>
+  <canvas id="resourceChart" width="400" height="400"></canvas>
+
+  <h2>All Submitted Resources</h2>
+  <div id="resourceContainer"></div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAAyaWPk6h7Oi_StRM8stnP7wyN3KWmZTM",
+      authDomain: "disastermanagement-64f77.firebaseapp.com",
+      projectId: "disastermanagement-64f77",
+      storageBucket: "disastermanagement-64f77.appspot.com",
+      messagingSenderId: "380070686307",
+      appId: "1:380070686307:web:b4b773fbd81e0034239256"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    firebase.auth().onAuthStateChanged(user => {
+      if (!user) {
+        window.location.href = "login.html";
+      } else {
+        alert("Welcome! You're successfully logged in.\n\n**ALERT**: Emergency resources have been allocated to Zone 4 due to flooding. Please prioritize medical supplies.");
+        loadDashboard();
+      }
+    });
+
+    function logout() {
+      firebase.auth().signOut().then(() => {
+        window.location.href = "login.html";
+      });
+    }
+
+    function loadDashboard() {
+      const container = document.getElementById('resourceContainer');
+      const typeCounts = {};
+
+      db.collection("Resources")
+        .orderBy("timestamp", "desc")
+        .get()
+        .then(snapshot => {
+          container.innerHTML = ""; // Clear existing content
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            const date = data.timestamp?.toDate().toLocaleString() || "N/A";
+
+            const type = data.type;
+            typeCounts[type] = (typeCounts[type] || 0) + 1;
+
+            container.innerHTML += `
+              <div class="resource">
+                <strong>Resource:</strong> ${data.resourceName} <br>
+                <strong>Quantity:</strong> ${data.quantity} <br>
+                <strong>Location:</strong> ${data.location} <br>
+                <strong>Type:</strong> ${type} <br>
+                <strong>Submitted on:</strong> ${date}
+              </div>
+            `;
+          });
+
+          const ctx = document.getElementById('resourceChart').getContext('2d');
+          new Chart(ctx, {
+            type: 'pie',
+            data: {
+              labels: Object.keys(typeCounts),
+              datasets: [{
+                label: 'Resource Distribution',
+                data: Object.values(typeCounts),
+                backgroundColor: [
+                  '#3498db', '#e74c3c', '#f1c40f', '#9b59b6', '#2ecc71'
+                ],
+                borderWidth: 1
+              }]
+            }
+          });
+        })
+        .catch(err => {
+          console.error("Error fetching data:", err);
+        });
+    }
+  </script>
+</body>
+</html>
